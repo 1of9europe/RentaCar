@@ -1,57 +1,55 @@
 import { Vehicle } from "../domain/Vehicle";
+import { AlcopaRawVehicle, AlcopaListPriceType } from "../domain/alcopa";
+import { cleanText, parseMileage, parseNumber } from "../utils/parsers";
 
-function parseNumber(value: string | number | undefined | null): number {
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "string") {
-    const sanitized = value.replace(/[^0-9.]/g, "");
-    const parsed = Number(sanitized);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
+const PRICE_SOURCE_COMMENT: Record<AlcopaListPriceType, string> = {
+  BID_CURRENT: "Price source: enchère courante",
+  STARTING_PRICE: "Price source: mise à prix",
+  UNKNOWN: "Price source: inconnu",
+};
 
-function parseMileage(rawMileage: string | number | undefined | null): number {
-  const numericValue = parseNumber(rawMileage);
-  return numericValue;
-}
+type NormalizationInput = AlcopaRawVehicle | Record<string, unknown>;
 
-export function normalizeAlcopaVehicle(rawData: any): Vehicle {
+export function normalizeAlcopaVehicle(rawData: NormalizationInput): Vehicle {
   const now = new Date().toISOString();
+  const typedRaw = rawData as AlcopaRawVehicle;
+  const listPrice = typedRaw.listPrice;
+  const listPriceType = typedRaw.listPriceType;
+  const listPriceLabel = typedRaw.listPriceLabel;
+
+  const priceCandidate = listPrice ?? typedRaw.price;
+
   const vehicle: Vehicle = {
     id: String(rawData.id ?? `ALC-${Date.now()}`),
     source: "ALCOPA",
     brand: String(rawData.brand ?? "Unknown").trim(),
     model: String(rawData.model ?? "Unknown").trim(),
     version: String(rawData.version ?? "").trim(),
-    year: parseNumber(rawData.year || rawData.registrationYear) || new Date().getFullYear(),
-    mileageKm: parseMileage(rawData.mileage || rawData.mileageKm),
-    fuelType: String(rawData.fuel || rawData.fuelType || "Unknown").trim(),
-    gearbox: String(rawData.gearbox || rawData.transmission || "Unknown").trim(),
-    doors: parseNumber(rawData.doors) || 5,
-    horsePower: parseNumber(rawData.horsePower || rawData.hp),
-    co2: parseNumber(rawData.co2),
-    options: Array.isArray(rawData.options)
-      ? rawData.options.map((opt: any) => String(opt).trim())
+    year: parseNumber(typedRaw.year ?? typedRaw.registrationYear) || new Date().getFullYear(),
+    mileageKm: parseMileage(typedRaw.mileage ?? typedRaw.mileageKm),
+    fuelType: String(typedRaw.fuel ?? typedRaw.fuelType ?? "Unknown").trim(),
+    gearbox: String(typedRaw.gearbox ?? typedRaw.transmission ?? "Unknown").trim(),
+    doors: parseNumber(typedRaw.doors) || 5,
+    horsePower: parseNumber(typedRaw.horsePower ?? typedRaw.hp),
+    co2: parseNumber(typedRaw.co2),
+    options: Array.isArray(typedRaw.options)
+      ? typedRaw.options.map((opt) => String(opt ?? "").trim())
       : [],
     condition: String(rawData.condition || "USED").toUpperCase() as Vehicle["condition"],
-    observedDamages: Array.isArray(rawData.observedDamages)
-      ? rawData.observedDamages.map((damage: any) => String(damage).trim())
+    observedDamages: Array.isArray(typedRaw.observedDamages)
+      ? typedRaw.observedDamages.map((damage) => String(damage ?? "").trim())
       : [],
-    comments: Array.isArray(rawData.comments)
-      ? rawData.comments.map((comment: any) => String(comment).trim())
-      : [],
-    price: parseNumber(rawData.price),
+    comments: buildComments(rawData, listPriceType, listPriceLabel),
+    price: parseNumber(priceCandidate),
     feesRate: typeof rawData.feesRate === "number" ? rawData.feesRate : 0.15,
     estimatedRepairCost:
-      rawData.estimatedRepairCost === null || rawData.estimatedRepairCost === undefined
+      typedRaw.estimatedRepairCost === null || typedRaw.estimatedRepairCost === undefined
         ? null
-        : parseNumber(rawData.estimatedRepairCost),
+        : parseNumber(typedRaw.estimatedRepairCost),
     estimatedResalePrice:
-      rawData.estimatedResalePrice === null || rawData.estimatedResalePrice === undefined
+      typedRaw.estimatedResalePrice === null || typedRaw.estimatedResalePrice === undefined
         ? null
-        : parseNumber(rawData.estimatedResalePrice),
+        : parseNumber(typedRaw.estimatedResalePrice),
     createdAt: String(rawData.createdAt ?? now),
     updatedAt: String(rawData.updatedAt ?? now),
   };
@@ -60,4 +58,26 @@ export function normalizeAlcopaVehicle(rawData: any): Vehicle {
   // TODO: Decode and normalize option codes (e.g., PACK1 -> Pack City) once specs are available.
 
   return vehicle;
+}
+
+function buildComments(
+  rawData: NormalizationInput,
+  listPriceType?: AlcopaListPriceType,
+  listPriceLabel?: string
+): string[] {
+  const comments = Array.isArray(rawData.comments)
+    ? rawData.comments.map((comment: unknown) => cleanText(String(comment ?? "")))
+    : [];
+
+  if (listPriceType) {
+    comments.push(PRICE_SOURCE_COMMENT[listPriceType]);
+  } else if (listPriceLabel) {
+    comments.push(`Price source: ${cleanText(listPriceLabel)}`);
+  }
+
+  if ("lotNumber" in rawData && rawData.lotNumber) {
+    comments.push(`Lot: ${cleanText(String(rawData.lotNumber))}`);
+  }
+
+  return comments.filter(Boolean);
 }
