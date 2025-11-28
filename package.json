@@ -1,0 +1,27 @@
+{
+  "name": "rentacar",
+  "version": "1.0.0",
+  "description": "Alcopa vs Leboncoin deal analyzer prototype",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "scrape:alcopa": "ts-node src/scraping/alcopaScraper.ts"
+  },
+  "keywords": [
+    "alcopa",
+    "leboncoin",
+    "scraping",
+    "playwright"
+  ],
+  "author": "RentaCar",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "playwright": "^1.57.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
